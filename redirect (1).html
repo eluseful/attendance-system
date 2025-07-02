@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Checking Attendance...</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+      margin: 0;
+      background: linear-gradient(135deg, #e0f7fa, #ffffff);
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .status {
+      font-size: 1.8rem;
+      color: #333;
+      padding: 20px;
+    }
+    .confetti {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="status" id="status">Checking...</div>
+  <canvas class="confetti" id="confetti"></canvas>
+
+  <!-- Success and Error Sounds -->
+  <audio id="success-sound" src="https://www.myinstants.com/media/sounds/success-fanfare-trumpets.mp3" preload="auto"></audio>
+  <audio id="error-sound" src="https://www.myinstants.com/media/sounds/wrong-answer-sound-effect.mp3" preload="auto"></audio>
+
+  <script>
+    const sheetdbApi = "https://sheetdb.io/api/v1/rbn1te68e6jxv";
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+    const statusEl = document.getElementById("status");
+    const successSound = document.getElementById("success-sound");
+    const errorSound = document.getElementById("error-sound");
+
+    function launchConfetti() {
+      const confetti = document.getElementById('confetti');
+      const ctx = confetti.getContext('2d');
+      confetti.width = window.innerWidth;
+      confetti.height = window.innerHeight;
+
+      const pieces = [];
+      for (let i = 0; i < 150; i++) {
+        pieces.push({
+          x: Math.random() * confetti.width,
+          y: Math.random() * confetti.height - confetti.height,
+          r: Math.random() * 6 + 4,
+          d: Math.random() * 40 + 10,
+          color: `hsl(${Math.random() * 360}, 100%, 60%)`,
+          tilt: Math.random() * 20 - 10,
+        });
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, confetti.width, confetti.height);
+        for (const p of pieces) {
+          ctx.beginPath();
+          ctx.lineWidth = p.r / 2;
+          ctx.strokeStyle = p.color;
+          ctx.moveTo(p.x + p.tilt + p.r / 4, p.y);
+          ctx.lineTo(p.x + p.tilt, p.y + p.r);
+          ctx.stroke();
+        }
+        update();
+      }
+
+      function update() {
+        for (const p of pieces) {
+          p.y += Math.cos(p.d) + 1 + p.r / 2;
+          p.x += Math.sin(0.01);
+          p.tilt = Math.sin(p.y / 15) * 15;
+
+          if (p.y > confetti.height) {
+            p.y = -10;
+            p.x = Math.random() * confetti.width;
+          }
+        }
+      }
+
+      (function animate() {
+        requestAnimationFrame(animate);
+        draw();
+      })();
+    }
+
+    if (!id) {
+      statusEl.innerText = "Invalid QR Code: No ID found.";
+    } else {
+      fetch(`${sheetdbApi}/search?GuestID=${id}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.length === 0) {
+            statusEl.innerText = "Invalid Card: Guest ID not found.";
+            errorSound.play();
+          } else {
+            const guest = data[0];
+            if (guest.Status === "Present") {
+              statusEl.innerText = "❗ Card Already Used";
+              errorSound.play();
+            } else {
+              const updateData = {
+                data: {
+                  "Check-In Time": new Date().toLocaleString(),
+                  "Status": "Present"
+                }
+              };
+              fetch(`${sheetdbApi}/GuestID/${id}`, {
+                method: "PATCH",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updateData)
+              })
+              .then(() => {
+                statusEl.innerText = "Login Success! We're Glad you came";
+                successSound.play();
+                launchConfetti();
+              })
+              .catch(() => {
+                statusEl.innerText = "Something went wrong while updating.";
+              });
+            }
+          }
+        })
+        .catch(() => {
+          statusEl.innerText = "Connection error. Please try again.";
+        });
+    }
+  </script>
+</body>
+</html>
